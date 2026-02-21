@@ -25,39 +25,50 @@ def get_naver_data(code):
     res_price = requests.get(url_price)
     soup_price = BeautifulSoup(res_price.text, 'xml')
     items = soup_price.find_all("item")
+    
+    # [가격 데이터 추출]
     prices = [int(item['data'].split('|')[4]) for item in items]
-    return name, prices
+    
+    # [전일 대비 등락률 계산]
+    current_price = prices[-1]
+    prev_price = prices[-2]
+    change_rate = round(((current_price - prev_price) / prev_price) * 100, 2)
+    
+    return name, prices, change_rate
 
 def send_discord_embed_pro(group_name, results):
     webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
     if not webhook_url: return
 
-    # 그룹 상태 요약 및 색상 결정
     avg_rsi = sum([r[2] for r in results]) / len(results)
     if avg_rsi >= 70:
-        color = 0xff4757  # 강한 빨강 (과열)
-        group_desc = "🚨 현재 시장이 매우 뜨겁습니다! (과매수 주의)"
+        color = 0xff4757 # Red
+        group_desc = "🚨 시장 과열 구간입니다. 익절을 고려해보세요!"
     elif avg_rsi <= 35:
-        color = 0x2e86de  # 시원한 파랑 (기회)
-        group_desc = "💎 바닥권 신호가 포착되었습니다. (분할매수 검토)"
+        color = 0x2e86de # Blue
+        group_desc = "💎 과매도 구간입니다. 반등 여부를 체크하세요!"
     else:
-        color = 0x2ed573  # 안정적인 초록
-        group_desc = "✅ 시장이 안정적인 흐름을 보이고 있습니다."
+        color = 0x2ed573 # Green
+        group_desc = "✅ 정상 범위 내에서 움직이고 있습니다."
 
     fields = []
-    for name, price, rsi_val in results:
-        # RSI 수치에 따른 이모지 및 한 줄 평
-        if rsi_val >= 70:
-            indicator = "🔴 **[과매수]**"
-        elif rsi_val <= 35:
-            indicator = "🔵 **[과매도]**"
+    for name, price, rsi_val, change_rate in results:
+        # 등락률 이모지 설정
+        if change_rate > 0:
+            change_str = f"🔺 +{change_rate}%"
+        elif change_rate < 0:
+            change_str = f"🔻 {change_rate}%"
         else:
-            indicator = "⚪ **[보통]**"
+            change_str = f"➖ 0.00%"
 
-        # 필드 구성 (가로 정렬 최적화)
+        # RSI 상태 태그
+        if rsi_val >= 70: indicator = "🔴 **[과매수]**"
+        elif rsi_val <= 35: indicator = "🔵 **[과매도]**"
+        else: indicator = "⚪ **[보통]**"
+
         fields.append({
             "name": f"📍 {name}",
-            "value": f"└ **RSI: {rsi_val}** {indicator}\n└ 현재가: `{price}`",
+            "value": f"└ **변동: {change_str}**\n└ RSI: `{rsi_val}` {indicator}\n└ 가격: `{price}`",
             "inline": True
         })
 
@@ -67,15 +78,12 @@ def send_discord_embed_pro(group_name, results):
             "description": f"{group_desc}\n━━━━━━━━━━━━━━━━━━━━",
             "color": color,
             "fields": fields,
-            "footer": {
-                "text": f"📅 분석 일시: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                "icon_url": "https://i.imgur.com/vHqY7eM.png" # 시계 아이콘 예시
-            }
+            "footer": {"text": f"📅 분석 일시: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"}
         }]
     }
     requests.post(webhook_url, json=payload)
 
-# --- 종목 그룹 설정 ---
+# --- 종목 그룹 설정 (원하는대로 수정하세요) ---
 groups = {
     "🔋 배당/지수 그룹": ["452360", "449190", "069500", "229200"],
     "🛡️ 방산 그룹": ["0080G0", "012450", "064350", "079550", "272210"],  
@@ -88,10 +96,10 @@ for group_name, tickers in groups.items():
     group_results = []
     for code in tickers:
         try:
-            name, prices = get_naver_data(code)
+            name, prices, change_rate = get_naver_data(code)
             if len(prices) > 20:
                 rsi_val = calculate_rsi(prices)
-                group_results.append([name, f"{prices[-1]:,}원", rsi_val])
+                group_results.append([name, f"{prices[-1]:,}원", rsi_val, change_rate])
         except: continue
     
     if group_results:
