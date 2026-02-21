@@ -2,7 +2,6 @@ name: Daily Stock RSI Report
 
 on:
   schedule:
-    # 한국 시간 오후 4시 (UTC 07:00)
     - cron: '0 7 * * 1-5'
   workflow_dispatch:
 
@@ -16,14 +15,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          # 버전을 3.9로 낮추면 라이브러리 호환성이 더 좋아집니다.
           python-version: '3.9'
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          # pandas_ta 대신 직접 계산하거나, 설치 방식을 강제합니다.
-          pip install pandas==1.5.3 beautifulsoup4 requests lxml tabulate pandas_ta
+          pip install pandas requests beautifulsoup4 lxml tabulate
 
       - name: Run script
         env:
