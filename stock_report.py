@@ -28,42 +28,59 @@ def get_naver_data(code):
     prices = [int(item['data'].split('|')[4]) for item in items]
     return name, prices
 
-def send_discord_embed(group_name, results):
+def send_discord_embed_pro(group_name, results):
     webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
     if not webhook_url: return
 
-    # 그룹 내 평균 RSI를 계산해 임베드 색상 결정
+    # 그룹 상태 요약 및 색상 결정
     avg_rsi = sum([r[2] for r in results]) / len(results)
-    color = 0x2ecc71  # 기본 초록색
-    if avg_rsi >= 70: color = 0xe74c3c  # 빨간색 (과매수)
-    elif avg_rsi <= 35: color = 0x3498db # 파란색 (과매도)
+    if avg_rsi >= 70:
+        color = 0xff4757  # 강한 빨강 (과열)
+        group_desc = "🚨 현재 시장이 매우 뜨겁습니다! (과매수 주의)"
+    elif avg_rsi <= 35:
+        color = 0x2e86de  # 시원한 파랑 (기회)
+        group_desc = "💎 바닥권 신호가 포착되었습니다. (분할매수 검토)"
+    else:
+        color = 0x2ed573  # 안정적인 초록
+        group_desc = "✅ 시장이 안정적인 흐름을 보이고 있습니다."
 
     fields = []
     for name, price, rsi_val in results:
-        status = "🔥" if rsi_val >= 70 else ("❄️" if rsi_val <= 35 else "✅")
+        # RSI 수치에 따른 이모지 및 한 줄 평
+        if rsi_val >= 70:
+            indicator = "🔴 **[과매수]**"
+        elif rsi_val <= 35:
+            indicator = "🔵 **[과매도]**"
+        else:
+            indicator = "⚪ **[보통]**"
+
+        # 필드 구성 (가로 정렬 최적화)
         fields.append({
-            "name": name,
-            "value": f"**가격:** `{price}`\n**RSI:** `{rsi_val}` {status}",
+            "name": f"📍 {name}",
+            "value": f"└ **RSI: {rsi_val}** {indicator}\n└ 현재가: `{price}`",
             "inline": True
         })
 
     payload = {
         "embeds": [{
-            "title": f"{group_name}",
+            "title": f"━━━━━━━━━━━━━━━━━━━━\n{group_name}",
+            "description": f"{group_desc}\n━━━━━━━━━━━━━━━━━━━━",
             "color": color,
             "fields": fields,
-            "footer": {"text": f"조회 시간: {datetime.now().strftime('%Y-%m-%d %H:%M')}"}
+            "footer": {
+                "text": f"📅 분석 일시: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                "icon_url": "https://i.imgur.com/vHqY7eM.png" # 시계 아이콘 예시
+            }
         }]
     }
     requests.post(webhook_url, json=payload)
 
 # --- 종목 그룹 설정 ---
 groups = {
-    "🛡️ 방산 그룹": ["0080G0", "012450", "064350", "079550", "272210"],  
-    "🔋 배당/지수 그룹": ["452360", "449190", "069500", "229200"],
-    "💻 반도체 그룹": ["396500", "005930", "000660", "042700"],
-    "⚡ 변압기 그룹": ["0117V0", "267260", "010120", "298040"],
-    "🚢 조선 그룹": ["0115D0", "042660", "329180", "010140"]
+    "🛡️ 방산 섹터 리포트": ["0080G0", "012450", "066910", "047810"],
+    "🇺🇸 미국 지수(환헷지)": ["449150", "452360", "441680"],
+    "💻 반도체/AI 섹터": ["305540", "005930", "000660"],
+    "⚡ 전력기기/변압기": ["0117V0", "267260", "010120"]
 }
 
 for group_name, tickers in groups.items():
@@ -77,4 +94,4 @@ for group_name, tickers in groups.items():
         except: continue
     
     if group_results:
-        send_discord_embed(group_name, group_results)
+        send_discord_embed_pro(group_name, group_results)
