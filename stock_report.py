@@ -26,71 +26,39 @@ def get_naver_data(code):
     soup_price = BeautifulSoup(res_price.text, 'xml')
     items = soup_price.find_all("item")
     
-    # [가격 데이터 추출]
     prices = [int(item['data'].split('|')[4]) for item in items]
-    
-    # [전일 대비 등락률 계산]
     current_price = prices[-1]
     prev_price = prices[-2]
     change_rate = round(((current_price - prev_price) / prev_price) * 100, 2)
     
     return name, prices, change_rate
 
-def send_discord_embed_pro(group_name, results):
+# --- 통합 메시지 전송 함수 ---
+def send_combined_report(all_embeds):
     webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
     if not webhook_url: return
 
-    avg_rsi = sum([r[2] for r in results]) / len(results)
-    if avg_rsi >= 70:
-        color = 0xff4757 # Red
-        group_desc = "🚨 시장 과열 구간입니다. 익절을 고려해보세요!"
-    elif avg_rsi <= 35:
-        color = 0x2e86de # Blue
-        group_desc = "💎 과매도 구간입니다. 반등 여부를 체크하세요!"
-    else:
-        color = 0x2ed573 # Green
-        group_desc = "✅ 정상 범위 내에서 움직이고 있습니다."
-
-    fields = []
-    for name, price, rsi_val, change_rate in results:
-        # 등락률 이모지 설정
-        if change_rate > 0:
-            change_str = f"🔺 +{change_rate}%"
-        elif change_rate < 0:
-            change_str = f"🔻 {change_rate}%"
-        else:
-            change_str = f"➖ 0.00%"
-
-        # RSI 상태 태그
-        if rsi_val >= 70: indicator = "🔴 **[과매수]**"
-        elif rsi_val <= 35: indicator = "🔵 **[과매도]**"
-        else: indicator = "⚪ **[보통]**"
-
-        fields.append({
-            "name": f"📍 {name}",
-            "value": f"└ **변동: {change_str}**\n└ RSI: `{rsi_val}` {indicator}\n└ 가격: `{price}`",
-            "inline": True
-        })
+    # 오늘 날짜 헤더 메시지
+    today_str = datetime.now().strftime('%Y년 %m월 %d일')
+    header_content = f"## 🗓️ {today_str} 주식 시장 리포트"
 
     payload = {
-        "embeds": [{
-            "title": f"━━━━━━━━━━━━━━━━━━━━\n{group_name}",
-            "description": f"{group_desc}\n━━━━━━━━━━━━━━━━━━━━",
-            "color": color,
-            "fields": fields,
-            "footer": {"text": f"📅 분석 일시: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"}
-        }]
+        "content": header_content,
+        "embeds": all_embeds
     }
+    
+    # 디스코드는 한 번에 최대 10개의 임베드를 보낼 수 있습니다.
     requests.post(webhook_url, json=payload)
 
-# --- 종목 그룹 설정 (원하는대로 수정하세요) ---
+# --- 종목 그룹 설정 ---
 groups = {
-    "🔋 배당/지수 그룹": ["452360", "449190", "069500", "229200"],
-    "🛡️ 방산 그룹": ["0080G0", "012450", "064350", "079550", "272210"],  
-    "💻 반도체 그룹": ["396500", "005930", "000660", "042700"],
-    "⚡ 변압기 그룹": ["0117V0", "267260", "010120", "298040"],
-    "🚢 조선 그룹": ["0115D0", "042660", "329180", "010140"]
+    "🛡️ 방산 섹터": ["0080G0", "012450", "066910", "047810"],
+    "🇺🇸 미국 지수(H)": ["449150", "452360", "441680"],
+    "💻 반도체/AI": ["305540", "005930", "000660"],
+    "⚡ 전력기기": ["0117V0", "267260", "010120"]
 }
+
+all_embeds = []
 
 for group_name, tickers in groups.items():
     group_results = []
@@ -103,4 +71,30 @@ for group_name, tickers in groups.items():
         except: continue
     
     if group_results:
-        send_discord_embed_pro(group_name, group_results)
+        # 임베드 데이터 생성
+        avg_rsi = sum([r[2] for r in group_results]) / len(group_results)
+        if avg_rsi >= 70: color = 0xff4757
+        elif avg_rsi <= 35: color = 0x2e86de
+        else: color = 0x2ed573
+
+        fields = []
+        for name, price, rsi_val, change_rate in group_results:
+            change_str = f"🔺 +{change_rate}%" if change_rate > 0 else (f"🔻 {change_rate}%" if change_rate < 0 else "➖ 0.00%")
+            indicator = "🔴 **[과열]**" if rsi_val >= 70 else ("🔵 **[침체]**" if rsi_val <= 35 else "⚪ **[보통]**")
+            
+            fields.append({
+                "name": f"📍 {name}",
+                "value": f"└ **변동: {change_str}**\n└ RSI: `{rsi_val}` {indicator}\n└ 가격: `{price}`",
+                "inline": True
+            })
+
+        # 리스트에 임베드 추가
+        all_embeds.append({
+            "title": f"━━━━━━━━━━━━━━━━━━━━\n{group_name}",
+            "color": color,
+            "fields": fields
+        })
+
+# 모든 그룹 처리가 끝나면 한 번에 전송
+if all_embeds:
+    send_combined_report(all_embeds)
