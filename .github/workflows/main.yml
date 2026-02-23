@@ -2,7 +2,9 @@ name: Daily Stock RSI Report
 
 on:
   schedule:
-    - cron: '0 7 * * 1-5'
+    # 한국 시간 오후 3시 45분 (UTC 06:45)
+    # 정각을 피해서 설정하면 대기열 지연을 줄일 수 있습니다.
+    - cron: '45 6 * * 1-5'
   workflow_dispatch:
 
 jobs:
